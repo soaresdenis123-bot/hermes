@@ -15,7 +15,6 @@ function weekRange() { const n = brNow(); const day = (n.getDay() + 6) % 7; cons
 
 const empty = { clients: [], products: [], labor: [], services: [] };
 
-// ---------- Camada de dados (Supabase) ----------
 async function load() {
   const { data, error } = await supabase.from("app_data").select("data").eq("id", "main").single();
   if (error) { console.error("load", error); return null; }
@@ -201,26 +200,38 @@ function Dash({ db, remaining, cName, clientDot, setTab }) {
 
 // ---------- CLIENTES ----------
 function Clients({ db, upd, clientDot, clientRemaining }) {
-  const [modal, setModal] = useState(false); const [detail, setDetail] = useState(null);
+  const [modal, setModal] = useState(false); const [editId, setEditId] = useState(null); const [detail, setDetail] = useState(null);
   const [f, setF] = useState({ name: "", contact: "", address: "", obs: "" });
-  const save = () => { if (!f.name) return; upd((p) => ({ clients: [...p.clients, { id: uid(), ...f, notes: f.obs ? [{ id: uid(), text: f.obs, date: iso(brNow()) }] : [] }] })); setF({ name: "", contact: "", address: "", obs: "" }); setModal(false); };
+  const openNew = () => { setEditId(null); setF({ name: "", contact: "", address: "", obs: "" }); setModal(true); };
+  const openEdit = (c) => { setEditId(c.id); setF({ name: c.name, contact: c.contact || "", address: c.address || "", obs: "" }); setModal(true); };
+  const save = () => {
+    if (!f.name) return;
+    if (editId) upd((p) => ({ clients: p.clients.map((x) => x.id === editId ? { ...x, name: f.name, contact: f.contact, address: f.address } : x) }));
+    else upd((p) => ({ clients: [...p.clients, { id: uid(), name: f.name, contact: f.contact, address: f.address, notes: f.obs ? [{ id: uid(), text: f.obs, date: iso(brNow()) }] : [] }] }));
+    setModal(false); setEditId(null);
+  };
+  const delClient = (id) => { if (!window.confirm("Excluir este cliente e TODOS os serviços dele? Esta ação não pode ser desfeita.")) return; upd((p) => ({ clients: p.clients.filter((x) => x.id !== id), services: p.services.filter((s) => s.clientId !== id) })); };
   return (
     <div>
-      <div className="flex items-center justify-between mb-5"><h1 className="text-2xl font-bold">Clientes</h1><button onClick={() => setModal(true)} className={btn}><Plus size={16} className="inline mr-1" />Novo cliente</button></div>
+      <div className="flex items-center justify-between mb-5"><h1 className="text-2xl font-bold">Clientes</h1><button onClick={openNew} className={btn}><Plus size={16} className="inline mr-1" />Novo cliente</button></div>
       <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">
         {db.clients.length === 0 && <p className="p-5 text-sm text-neutral-400">Nenhum cliente cadastrado.</p>}
         {db.clients.map((c) => { const rem = clientRemaining(c.id); const d = clientDot(c.id); return (
           <div key={c.id} onClick={() => setDetail(c.id)} className="flex items-center justify-between px-5 py-3 border-b border-neutral-50 last:border-0 cursor-pointer hover:bg-neutral-50">
             <div className="flex items-center gap-3"><span className={`w-3 h-3 rounded-full ${d === "red" ? "bg-red-500" : d === "green" ? "bg-emerald-500" : "bg-neutral-300"}`} /><div><p className="font-medium text-sm">{c.name}</p><p className="text-xs text-neutral-400">{c.contact || "sem contato"} · {c.address || "sem endereço"}</p></div></div>
-            {rem > 0 ? <span className="text-sm font-semibold text-red-500">{brl(rem)}</span> : <span className="text-xs text-emerald-500 font-medium">Em dia</span>}
+            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+              {rem > 0 ? <span className="text-sm font-semibold text-red-500">{brl(rem)}</span> : <span className="text-xs text-emerald-500 font-medium">Em dia</span>}
+              <button onClick={() => openEdit(c)} className="text-neutral-400 hover:text-amber-500"><Pencil size={15} /></button>
+              <button onClick={() => delClient(c.id)} className="text-neutral-300 hover:text-red-400"><Trash2 size={15} /></button>
+            </div>
           </div>); })}
       </div>
-      {modal && <Modal title="Novo cliente" onClose={() => setModal(false)}>
+      {modal && <Modal title={editId ? "Editar cliente" : "Novo cliente"} onClose={() => { setModal(false); setEditId(null); }}>
         <Field label="Nome *"><input className={inp} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Contato"><input className={inp} value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} placeholder="Telefone / WhatsApp" /></Field>
         <Field label="Endereço"><input className={inp} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-        <Field label="Observação"><textarea className={inp} rows={2} value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} /></Field>
-        <button onClick={save} className={btn + " w-full mt-1"}>Salvar cliente</button>
+        {!editId && <Field label="Observação"><textarea className={inp} rows={2} value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} /></Field>}
+        <button onClick={save} className={btn + " w-full mt-1"}>{editId ? "Salvar alterações" : "Salvar cliente"}</button>
       </Modal>}
       {detail && <ClientDetail db={db} upd={upd} id={detail} onClose={() => setDetail(null)} clientRemaining={clientRemaining} />}
     </div>
@@ -259,10 +270,13 @@ function ClientDetail({ db, upd, id, onClose, clientRemaining }) {
 
 // ---------- SERVIÇOS ----------
 function Services({ db, upd, cName, remaining }) {
-  const [modal, setModal] = useState(false); const [complete, setComplete] = useState(null);
+  const [modal, setModal] = useState(false); const [editing, setEditing] = useState(null); const [complete, setComplete] = useState(null);
+  const openNew = () => { setEditing(null); setModal(true); };
+  const openEdit = (s) => { setEditing(s); setModal(true); };
+  const delService = (id) => { if (!window.confirm("Excluir este serviço?")) return; upd((p) => ({ services: p.services.filter((x) => x.id !== id) })); };
   return (
     <div>
-      <div className="flex items-center justify-between mb-5"><h1 className="text-2xl font-bold">Serviços & Orçamentos</h1><button onClick={() => setModal(true)} className={btn}><Plus size={16} className="inline mr-1" />Novo serviço</button></div>
+      <div className="flex items-center justify-between mb-5"><h1 className="text-2xl font-bold">Serviços & Orçamentos</h1><button onClick={openNew} className={btn}><Plus size={16} className="inline mr-1" />Novo serviço</button></div>
       <div className="space-y-2">
         {db.services.length === 0 && <p className="text-sm text-neutral-400">Nenhum serviço criado.</p>}
         {db.services.slice().reverse().map((s) => { const rem = remaining(s); const client = db.clients.find((c) => c.id === s.clientId); return (
@@ -280,26 +294,28 @@ function Services({ db, upd, cName, remaining }) {
                 <p className="text-[10px] text-neutral-400">{s.paymentMethod}</p>
               </div>
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2 mt-2 flex-wrap">
               <button onClick={() => gerarPDF(s, client)} className="text-xs px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-700 font-medium hover:bg-neutral-200 flex items-center gap-1"><FileText size={13} />Gerar PDF</button>
+              <button onClick={() => openEdit(s)} className="text-xs px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-700 font-medium hover:bg-neutral-200 flex items-center gap-1"><Pencil size={13} />Editar</button>
+              <button onClick={() => delService(s.id)} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-medium hover:bg-red-100 flex items-center gap-1"><Trash2 size={13} />Excluir</button>
               {s.status !== "concluido" && <button onClick={() => setComplete(s)} className="text-xs px-3 py-1.5 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-700">Concluir / registrar pagamento</button>}
             </div>
           </div>); })}
       </div>
-      {modal && <NewService db={db} upd={upd} onClose={() => setModal(false)} />}
+      {modal && <NewService db={db} upd={upd} editing={editing} onClose={() => { setModal(false); setEditing(null); }} />}
       {complete && <CompleteService s={complete} upd={upd} onClose={() => setComplete(null)} />}
     </div>
   );
 }
-function NewService({ db, upd, onClose }) {
-  const [type, setType] = useState("servico");
-  const [clientId, setClientId] = useState(""); const [newCli, setNewCli] = useState(null);
-  const [items, setItems] = useState([]);
+function NewService({ db, upd, editing, onClose }) {
+  const [type, setType] = useState(editing?.type || "servico");
+  const [clientId, setClientId] = useState(editing?.clientId || ""); const [newCli, setNewCli] = useState(null);
+  const [items, setItems] = useState(editing?.items ? [...editing.items] : []);
   const [src, setSrc] = useState("produto"); const [pick, setPick] = useState(""); const [qty, setQty] = useState(1); const [iv, setIv] = useState(""); const [mname, setMname] = useState("");
-  const [travel, setTravel] = useState(false); const [tval, setTval] = useState("");
-  const [date, setDate] = useState(iso(brNow())); const [time, setTime] = useState("09:00");
-  const [durType, setDurType] = useState("horas"); const [durVal, setDurVal] = useState(2);
-  const [pay, setPay] = useState(PAY[0]);
+  const [travel, setTravel] = useState(editing?.travel?.charged || false); const [tval, setTval] = useState(editing?.travel?.value || "");
+  const [date, setDate] = useState(editing?.scheduledDate || iso(brNow())); const [time, setTime] = useState(editing?.scheduledTime || "09:00");
+  const [durType, setDurType] = useState(editing?.durType || "horas"); const [durVal, setDurVal] = useState(editing?.durVal || 2);
+  const [pay, setPay] = useState(editing?.paymentMethod || PAY[0]);
 
   const addItem = () => {
     if (src === "produto") { const p = db.products.find((x) => x.id === pick); if (!p) return; setItems([...items, { type: "produto", refId: p.id, name: p.name, qty: +qty, value: +iv || 0 }]); }
@@ -310,16 +326,19 @@ function NewService({ db, upd, onClose }) {
   const itemsTotal = items.reduce((a, i) => a + i.value * i.qty, 0);
   const total = itemsTotal + (travel ? +tval || 0 : 0);
   const save = () => {
-    let cid = clientId;
-    let extra = {};
+    let cid = clientId; let extra = {};
     if (newCli) { cid = uid(); extra = { clients: [...db.clients, { id: cid, name: newCli.name, contact: newCli.contact, address: newCli.address, notes: [] }] }; }
     if (!cid) return;
-    const svc = { id: uid(), type, clientId: cid, items, travel: { charged: travel, value: +tval || 0 }, scheduledDate: date, scheduledTime: time, durType, durVal: +durVal, total, paymentMethod: pay, status: "agendado", paid: "nao", paidAmount: 0, observation: "" };
-    upd((p) => ({ ...extra, services: [...p.services, svc] }));
+    if (editing) {
+      upd((p) => ({ ...extra, services: p.services.map((x) => x.id === editing.id ? { ...x, type, clientId: cid, items, travel: { charged: travel, value: +tval || 0 }, scheduledDate: date, scheduledTime: time, durType, durVal: +durVal, total, paymentMethod: pay } : x) }));
+    } else {
+      const svc = { id: uid(), type, clientId: cid, items, travel: { charged: travel, value: +tval || 0 }, scheduledDate: date, scheduledTime: time, durType, durVal: +durVal, total, paymentMethod: pay, status: "agendado", paid: "nao", paidAmount: 0, observation: "" };
+      upd((p) => ({ ...extra, services: [...p.services, svc] }));
+    }
     onClose();
   };
   return (
-    <Modal title="Novo serviço / orçamento" onClose={onClose} wide>
+    <Modal title={editing ? "Editar serviço" : "Novo serviço / orçamento"} onClose={onClose} wide>
       <div className="flex gap-2 mb-4">{["servico", "orcamento"].map((t) => <button key={t} onClick={() => setType(t)} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${type === t ? "bg-amber-400 text-neutral-900" : "bg-neutral-100 text-neutral-500"}`}>{t === "servico" ? "Serviço" : "Orçamento"}</button>)}</div>
       <Field label="Cliente">
         {!newCli ? <div className="flex gap-2"><select className={inp} value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="">Selecione…</option>{db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button onClick={() => setNewCli({ name: "", contact: "", address: "" })} className="px-3 py-2 rounded-lg bg-neutral-100 text-sm whitespace-nowrap">+ Novo</button></div>
@@ -346,7 +365,7 @@ function NewService({ db, upd, onClose }) {
         <Field label="Forma de pagamento"><select className={inp} value={pay} onChange={(e) => setPay(e.target.value)}>{PAY.map((p) => <option key={p}>{p}</option>)}</select></Field>
       </div>
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100"><span className="text-sm text-neutral-500">Total</span><span className="text-xl font-bold text-amber-500">{brl(total)}</span></div>
-      <button onClick={save} className={btn + " w-full mt-3"}>Salvar {type === "orcamento" ? "orçamento" : "serviço"}</button>
+      <button onClick={save} className={btn + " w-full mt-3"}>{editing ? "Salvar alterações" : `Salvar ${type === "orcamento" ? "orçamento" : "serviço"}`}</button>
     </Modal>
   );
 }
@@ -498,32 +517,52 @@ function EditPayment({ s, upd, cName, onClose }) {
 function Products({ db, upd }) {
   const [tab, setTab] = useState("prod");
   const [pModal, setPModal] = useState(false); const [lModal, setLModal] = useState(false);
+  const [pEdit, setPEdit] = useState(null); const [lEdit, setLEdit] = useState(null);
   const [pf, setPf] = useState({ name: "", category: "HS", subcategory: "", warranty: "Nenhuma", description: "", gross: "", net: "" });
   const [lf, setLf] = useState({ name: "", description: "", value: "" });
   const margin = (+pf.gross || 0) - (+pf.net || 0);
   const marginPct = (+pf.net > 0) ? (margin / +pf.net) * 100 : 0;
-  const saveP = () => { if (!pf.name) return; upd((p) => ({ products: [...p.products, { id: uid(), ...pf, gross: +pf.gross || 0, net: +pf.net || 0 }] })); setPf({ name: "", category: "HS", subcategory: "", warranty: "Nenhuma", description: "", gross: "", net: "" }); setPModal(false); };
-  const saveL = () => { if (!lf.name) return; upd((p) => ({ labor: [...p.labor, { id: uid(), ...lf, value: +lf.value || 0 }] })); setLf({ name: "", description: "", value: "" }); setLModal(false); };
+
+  const openNewP = () => { setPEdit(null); setPf({ name: "", category: "HS", subcategory: "", warranty: "Nenhuma", description: "", gross: "", net: "" }); setPModal(true); };
+  const openEditP = (p) => { setPEdit(p.id); setPf({ name: p.name, category: p.category, subcategory: p.subcategory || "", warranty: p.warranty, description: p.description || "", gross: p.gross || "", net: p.net || "" }); setPModal(true); };
+  const saveP = () => {
+    if (!pf.name) return;
+    if (pEdit) upd((d) => ({ products: d.products.map((x) => x.id === pEdit ? { ...x, ...pf, gross: +pf.gross || 0, net: +pf.net || 0 } : x) }));
+    else upd((p) => ({ products: [...p.products, { id: uid(), ...pf, gross: +pf.gross || 0, net: +pf.net || 0 }] }));
+    setPModal(false); setPEdit(null);
+  };
+  const delP = (id) => { if (!window.confirm("Excluir este produto?")) return; upd((d) => ({ products: d.products.filter((x) => x.id !== id) })); };
+
+  const openNewL = () => { setLEdit(null); setLf({ name: "", description: "", value: "" }); setLModal(true); };
+  const openEditL = (m) => { setLEdit(m.id); setLf({ name: m.name, description: m.description || "", value: m.value || "" }); setLModal(true); };
+  const saveL = () => {
+    if (!lf.name) return;
+    if (lEdit) upd((d) => ({ labor: d.labor.map((x) => x.id === lEdit ? { ...x, ...lf, value: +lf.value || 0 } : x) }));
+    else upd((p) => ({ labor: [...p.labor, { id: uid(), ...lf, value: +lf.value || 0 }] }));
+    setLModal(false); setLEdit(null);
+  };
+  const delL = (id) => { if (!window.confirm("Excluir esta mão de obra?")) return; upd((d) => ({ labor: d.labor.filter((x) => x.id !== id) })); };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-2xl font-bold">Produtos & Mão de obra</h1>
-        <button onClick={() => tab === "prod" ? setPModal(true) : setLModal(true)} className={btn}><Plus size={16} className="inline mr-1" />{tab === "prod" ? "Novo produto" : "Nova mão de obra"}</button>
+        <button onClick={() => tab === "prod" ? openNewP() : openNewL()} className={btn}><Plus size={16} className="inline mr-1" />{tab === "prod" ? "Novo produto" : "Nova mão de obra"}</button>
       </div>
       <div className="flex gap-2 mb-4">{[["prod", "Produtos"], ["lab", "Mão de obra"]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`px-4 py-1.5 rounded-lg text-sm font-medium ${tab === k ? "bg-neutral-900 text-white" : "bg-white border border-neutral-100 text-neutral-500"}`}>{l}</button>)}</div>
       {tab === "prod" ? <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">
         {db.products.map((p) => { const mg = (p.gross || 0) - (p.net || 0); return (
           <div key={p.id} className="flex items-center justify-between px-5 py-3 border-b border-neutral-50 last:border-0">
             <div><div className="flex items-center gap-2"><p className="font-medium text-sm">{p.name}</p><span className={`text-[10px] px-2 py-0.5 rounded-full ${p.category === "HS" ? "bg-amber-100 text-amber-700" : "bg-neutral-100 text-neutral-500"}`}>{p.category === "HS" ? "Produto HS" : "Terceiro"}</span>{p.subcategory && <span className="text-[10px] text-neutral-400">{p.subcategory}</span>}</div><p className="text-xs text-neutral-400">{p.description}</p><p className="text-[11px] text-neutral-400 mt-0.5">Bruto {brl(p.gross)} · Líquido {brl(p.net)} · <span className={`font-semibold ${mg >= 0 ? "text-emerald-500" : "text-red-500"}`}>Margem {brl(mg)}</span></p></div>
-            <div className="flex items-center gap-3"><span className="text-xs text-neutral-500">Garantia: {p.warranty}</span><button onClick={() => upd((d) => ({ products: d.products.filter((x) => x.id !== p.id) }))} className="text-neutral-300 hover:text-red-400"><Trash2 size={15} /></button></div>
+            <div className="flex items-center gap-3"><span className="text-xs text-neutral-500">Garantia: {p.warranty}</span><button onClick={() => openEditP(p)} className="text-neutral-400 hover:text-amber-500"><Pencil size={15} /></button><button onClick={() => delP(p.id)} className="text-neutral-300 hover:text-red-400"><Trash2 size={15} /></button></div>
           </div>); })}{!db.products.length && <p className="p-5 text-sm text-neutral-400">Nenhum produto cadastrado.</p>}
       </div> : <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">
         {db.labor.map((m) => <div key={m.id} className="flex items-center justify-between px-5 py-3 border-b border-neutral-50 last:border-0">
           <div><p className="font-medium text-sm">{m.name}</p><p className="text-xs text-neutral-400">{m.description}</p></div>
-          <div className="flex items-center gap-3"><span className="text-sm text-amber-500 font-semibold">{brl(m.value)}</span><button onClick={() => upd((d) => ({ labor: d.labor.filter((x) => x.id !== m.id) }))} className="text-neutral-300 hover:text-red-400"><Trash2 size={15} /></button></div>
+          <div className="flex items-center gap-3"><span className="text-sm text-amber-500 font-semibold">{brl(m.value)}</span><button onClick={() => openEditL(m)} className="text-neutral-400 hover:text-amber-500"><Pencil size={15} /></button><button onClick={() => delL(m.id)} className="text-neutral-300 hover:text-red-400"><Trash2 size={15} /></button></div>
         </div>)}{!db.labor.length && <p className="p-5 text-sm text-neutral-400">Nenhuma mão de obra cadastrada.</p>}
       </div>}
-      {pModal && <Modal title="Novo produto" onClose={() => setPModal(false)}>
+      {pModal && <Modal title={pEdit ? "Editar produto" : "Novo produto"} onClose={() => { setPModal(false); setPEdit(null); }}>
         <Field label="Nome *"><input className={inp} value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Categoria"><select className={inp} value={pf.category} onChange={(e) => setPf({ ...pf, category: e.target.value })}><option value="HS">Produto HS</option><option value="Terceiro">Terceiro</option></select></Field>
@@ -539,13 +578,13 @@ function Products({ db, upd }) {
         </div>
         <Field label="Garantia"><select className={inp} value={pf.warranty} onChange={(e) => setPf({ ...pf, warranty: e.target.value })}>{WAR.map((w) => <option key={w}>{w}</option>)}</select></Field>
         <Field label="Descrição"><textarea className={inp} rows={2} value={pf.description} onChange={(e) => setPf({ ...pf, description: e.target.value })} /></Field>
-        <button onClick={saveP} className={btn + " w-full"}>Salvar produto</button>
+        <button onClick={saveP} className={btn + " w-full"}>{pEdit ? "Salvar alterações" : "Salvar produto"}</button>
       </Modal>}
-      {lModal && <Modal title="Nova mão de obra" onClose={() => setLModal(false)}>
+      {lModal && <Modal title={lEdit ? "Editar mão de obra" : "Nova mão de obra"} onClose={() => { setLModal(false); setLEdit(null); }}>
         <Field label="Nome *"><input className={inp} value={lf.name} onChange={(e) => setLf({ ...lf, name: e.target.value })} placeholder="Ex: Instalação de painel" /></Field>
         <Field label="Valor padrão"><input className={inp} type="number" value={lf.value} onChange={(e) => setLf({ ...lf, value: e.target.value })} /></Field>
         <Field label="Descrição"><textarea className={inp} rows={2} value={lf.description} onChange={(e) => setLf({ ...lf, description: e.target.value })} /></Field>
-        <button onClick={saveL} className={btn + " w-full"}>Salvar mão de obra</button>
+        <button onClick={saveL} className={btn + " w-full"}>{lEdit ? "Salvar alterações" : "Salvar mão de obra"}</button>
       </Modal>}
     </div>
   );
