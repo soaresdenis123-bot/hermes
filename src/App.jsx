@@ -613,7 +613,7 @@ function Produtos({ catalog, setCatalog, db, upd }) {
         <h1 className="text-2xl font-bold">Produtos</h1>
         <button onClick={() => tab === "labor" ? openNewL() : openNew()} className={btn}><Plus size={16} className="inline mr-1" />{tab === "labor" ? "Nova mão de obra" : "Novo item"}</button>
       </div>
-      <div className="flex gap-2 mb-4">{[["iluminacao", "Iluminação"], ["eletrica", "Elétrica"], ["labor", "Mão de obra"]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`px-4 py-1.5 rounded-lg text-sm font-medium ${tab === k ? "bg-neutral-900 text-white" : "bg-white border border-neutral-100 text-neutral-500"}`}>{l}</button>)}</div>
+      <div className="flex gap-2 mb-4">{[["iluminacao", "Iluminação"], ["eletrica", "Materiais Gerais"], ["labor", "Mão de obra"]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`px-4 py-1.5 rounded-lg text-sm font-medium ${tab === k ? "bg-neutral-900 text-white" : "bg-white border border-neutral-100 text-neutral-500"}`}>{l}</button>)}</div>
 
       {tab !== "labor" ? subs.map((sub) => {
         const rows = catItems.filter((c) => c.subcategory === sub);
@@ -634,7 +634,7 @@ function Produtos({ catalog, setCatalog, db, upd }) {
       {modal && <Modal title={editId ? "Editar item" : "Novo item do catálogo"} onClose={() => { setModal(false); setEditId(null); }}>
         <Field label="Nome *"><input className={inp} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Categoria"><select className={inp} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value, subcategory: SUBCATS[e.target.value][0] })}><option value="iluminacao">Iluminação</option><option value="eletrica">Elétrica</option></select></Field>
+          <Field label="Categoria"><select className={inp} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value, subcategory: SUBCATS[e.target.value][0] })}><option value="iluminacao">Iluminação</option><option value="eletrica">Materiais Gerais</option></select></Field>
           <Field label="Subcategoria"><select className={inp} value={f.subcategory} onChange={(e) => setF({ ...f, subcategory: e.target.value })}>{SUBCATS[f.category].map((s) => <option key={s}>{s}</option>)}</select></Field>
           <Field label="Unidade"><select className={inp} value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}>{["un", "ml", "m", "rolo"].map((u) => <option key={u}>{u}</option>)}</select></Field>
           <Field label="Ícone"><select className={inp} value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })}>{ICON_KEYS.map((i) => <option key={i}>{i}</option>)}</select></Field>
@@ -744,7 +744,7 @@ function PublicCatalog() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", contact: "", address: "" });
   const [items, setItems] = useState([]); const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState({}); const [sending, setSending] = useState(false); const [done, setDone] = useState(false);
+  const [cart, setCart] = useState({}); const [sending, setSending] = useState(false); const [done, setDone] = useState(false); const [cat, setCat] = useState(null);
   useEffect(() => { loadPublicCatalog().then((d) => { setItems(d); setLoading(false); }); }, []);
   const add = (id) => setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));
   const sub = (id) => setCart((c) => { const n = { ...c }; if (n[id] > 1) n[id]--; else delete n[id]; return n; });
@@ -756,8 +756,18 @@ function PublicCatalog() {
     setSending(false);
     if (!err) setDone(true); else alert("Erro ao enviar. Verifique a conexão e tente de novo.");
   };
+  const catLabel = { iluminacao: "Iluminação", eletrica: "Materiais Gerais" };
+  const visible = cat ? items.filter((i) => i.category === cat) : [];
   const groups = {};
-  items.forEach((i) => { const key = i.subcategory || i.category; (groups[key] = groups[key] || []).push(i); });
+  visible.forEach((i) => { const key = i.subcategory || i.category; (groups[key] = groups[key] || []).push(i); });
+  const Bar = () => count > 0 ? (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-4">
+      <div className="max-w-xl mx-auto flex items-center gap-3">
+        <div className="flex items-center gap-2 text-sm"><ShoppingCart size={18} className="text-amber-500" /><span className="font-semibold">{count} {count === 1 ? "item" : "itens"}</span></div>
+        <button disabled={sending} onClick={submit} className={btn + " flex-1 flex items-center justify-center gap-1 disabled:opacity-60"}><Send size={15} />{sending ? "Enviando…" : "Enviar solicitação"}</button>
+      </div>
+    </div>
+  ) : null;
 
   if (done) return <PubShell><div className="bg-white rounded-2xl border border-neutral-100 p-8 text-center mt-8"><div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4"><CheckCircle2 className="text-emerald-500" size={30} /></div><h2 className="text-xl font-bold mb-1">Solicitação enviada!</h2><p className="text-sm text-neutral-500">Obrigado, {form.name.split(" ")[0]}. Em breve entraremos em contato com seu orçamento.</p></div></PubShell>;
 
@@ -774,9 +784,30 @@ function PublicCatalog() {
     </PubShell>
   );
 
-  return (
+  // Escolha de categoria (dois cards)
+  if (!cat) return (
     <PubShell>
       <button onClick={() => setStep(1)} className="text-xs text-neutral-400 flex items-center gap-1 mt-2 mb-3"><ChevronLeft size={14} />voltar aos dados</button>
+      <h2 className="text-lg font-bold mb-1">O que você procura?</h2>
+      <p className="text-sm text-neutral-500 mb-4">Escolha uma categoria para ver os produtos.</p>
+      <div className="grid grid-cols-1 gap-3">
+        {["iluminacao", "eletrica"].map((c) => (
+          <button key={c} onClick={() => setCat(c)} className="bg-white rounded-2xl border border-neutral-100 p-5 flex items-center gap-4 text-left hover:border-amber-400 transition">
+            <div className="w-12 h-12 rounded-xl bg-amber-400/10 flex items-center justify-center text-amber-500 shrink-0">{c === "iluminacao" ? <Lightbulb size={26} /> : <Package size={26} />}</div>
+            <div className="flex-1"><p className="font-bold">{catLabel[c]}</p><p className="text-xs text-neutral-400">{items.filter((i) => i.category === c).length} itens</p></div>
+            <ChevronRight className="text-neutral-300" size={20} />
+          </button>
+        ))}
+      </div>
+      <Bar />
+    </PubShell>
+  );
+
+  // Produtos da categoria escolhida
+  return (
+    <PubShell>
+      <button onClick={() => setCat(null)} className="text-xs text-neutral-400 flex items-center gap-1 mt-2 mb-3"><ChevronLeft size={14} />trocar categoria</button>
+      <h2 className="text-lg font-bold mb-3">{catLabel[cat]}</h2>
       {loading ? <p className="text-sm text-neutral-400 text-center py-10">Carregando catálogo…</p> : Object.keys(groups).map((g) => (
         <div key={g} className="mb-5">
           <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">{g}</p>
@@ -793,14 +824,7 @@ function PublicCatalog() {
           </div>
         </div>
       ))}
-      {count > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-4">
-          <div className="max-w-xl mx-auto flex items-center gap-3">
-            <div className="flex items-center gap-2 text-sm"><ShoppingCart size={18} className="text-amber-500" /><span className="font-semibold">{count} {count === 1 ? "item" : "itens"}</span></div>
-            <button disabled={sending} onClick={submit} className={btn + " flex-1 flex items-center justify-center gap-1 disabled:opacity-60"}><Send size={15} />{sending ? "Enviando…" : "Enviar solicitação"}</button>
-          </div>
-        </div>
-      )}
+      <Bar />
     </PubShell>
   );
 }
