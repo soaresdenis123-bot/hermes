@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient";
 
 const TZ = "America/Sao_Paulo";
 const STORAGE_BASE = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/catalog`;
+const imgUrl = (item) => item?.image || (item?.id ? `${STORAGE_BASE}/${item.id}.png` : null);
 const PAY = ["Pix", "Dinheiro", "Cartão", "Transferência", "Boleto"];
 const WAR = ["Nenhuma", "6 meses", "1 ano"];
 const SUBCATS = { iluminacao: ["Iluminação Interna", "Iluminação Externa"], eletrica: ["Infraestrutura", "Disjuntores e Proteção", "Cabos e Condutores", "Eletrodutos e Caixas"] };
@@ -80,14 +81,15 @@ function ProductIcon({ icon, size = 22 }) {
   };
   return <svg {...common}>{P[k]}</svg>;
 }
-function ProdImg({ item, size = 40 }) {
+function ProdImg({ item, size = 40, fill = false, onClick }) {
   const srcs = [];
   if (item?.image) srcs.push(item.image);
   if (item?.id) srcs.push(`${STORAGE_BASE}/${item.id}.png`);
   const [i, setI] = useState(0);
   useEffect(() => { setI(0); }, [item?.id, item?.image]);
-  if (i >= srcs.length) return <ProductIcon icon={item?.icon} size={Math.round(size * 0.78)} />;
-  return <img src={srcs[i]} alt="" onError={() => setI((n) => n + 1)} style={{ width: size, height: size, objectFit: "contain" }} />;
+  if (i >= srcs.length) return <ProductIcon icon={item?.icon} size={fill ? 48 : Math.round(size * 0.78)} />;
+  const style = fill ? { width: "100%", height: "100%", objectFit: "contain" } : { width: size, height: size, objectFit: "contain" };
+  return <img src={srcs[i]} alt="" onClick={onClick} onError={() => setI((n) => n + 1)} style={style} className={onClick ? "cursor-zoom-in" : ""} />;
 }
 
 // ---------- PDF (orçamento) ----------
@@ -766,7 +768,7 @@ function PublicCatalog() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", contact: "", address: "" });
   const [items, setItems] = useState([]); const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState({}); const [sending, setSending] = useState(false); const [done, setDone] = useState(false); const [cat, setCat] = useState(null);
+  const [cart, setCart] = useState({}); const [sending, setSending] = useState(false); const [done, setDone] = useState(false); const [cat, setCat] = useState(null); const [zoom, setZoom] = useState(null);
   useEffect(() => { loadPublicCatalog().then((d) => { setItems(d); setLoading(false); }); }, []);
   const add = (id) => setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));
   const sub = (id) => setCart((c) => { const n = { ...c }; if (n[id] > 1) n[id]--; else delete n[id]; return n; });
@@ -836,17 +838,25 @@ function PublicCatalog() {
           <div className="grid grid-cols-2 gap-2">
             {groups[g].map((i) => { const q = cart[i.id] || 0; return (
               <div key={i.id} className={`bg-white rounded-xl border p-3 ${q ? "border-amber-400" : "border-neutral-100"}`}>
-                <div className="text-amber-500 mb-2 h-11 flex items-center"><ProdImg item={i} size={44} /></div>
-                <p className="text-xs font-medium leading-tight mb-0.5 min-h-[2.2em]">{i.name}</p>
+                <div className="text-amber-500 mb-2 h-36 flex items-center justify-center bg-neutral-50 rounded-lg overflow-hidden"><ProdImg item={i} fill onClick={() => setZoom(i)} /></div>
+                <p className="text-sm font-medium leading-tight mb-0.5 min-h-[2.4em]">{i.name}</p>
                 <p className="text-[10px] text-neutral-400 mb-2">{i.unit}</p>
-                {q === 0 ? <button onClick={() => add(i.id)} className="w-full py-1.5 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-medium hover:bg-amber-100">+ Adicionar</button>
-                  : <div className="flex items-center justify-between"><button onClick={() => sub(i.id)} className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center"><Minus size={14} /></button><span className="text-sm font-bold">{q}</span><button onClick={() => add(i.id)} className="w-7 h-7 rounded-lg bg-amber-400 flex items-center justify-center"><Plus size={14} /></button></div>}
+                {q === 0 ? <button onClick={() => add(i.id)} className="w-full py-2 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-semibold hover:bg-amber-100">+ Adicionar</button>
+                  : <div className="flex items-center justify-between"><button onClick={() => sub(i.id)} className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center"><Minus size={16} /></button><span className="text-base font-bold">{q}</span><button onClick={() => add(i.id)} className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center"><Plus size={16} /></button></div>}
               </div>
             ); })}
           </div>
         </div>
       ))}
       <Bar />
+      {zoom && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center p-4" onClick={() => setZoom(null)}>
+          <button onClick={() => setZoom(null)} className="absolute top-4 right-4 text-white/80 hover:text-white"><X size={28} /></button>
+          <img src={imgUrl(zoom)} alt={zoom.name} className="max-w-full max-h-[80vh] object-contain" />
+          <p className="text-white text-center mt-4 font-medium">{zoom.name}</p>
+          <p className="text-white/50 text-xs">toque para fechar</p>
+        </div>
+      )}
     </PubShell>
   );
 }
