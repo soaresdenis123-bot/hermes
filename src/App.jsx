@@ -3,6 +3,7 @@ import { LayoutDashboard, Users, Wrench, Calendar as Cal, DollarSign, Package, P
 import { supabase } from "./supabaseClient";
 
 const TZ = "America/Sao_Paulo";
+const STORAGE_BASE = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/catalog`;
 const PAY = ["Pix", "Dinheiro", "Cartão", "Transferência", "Boleto"];
 const WAR = ["Nenhuma", "6 meses", "1 ano"];
 const SUBCATS = { iluminacao: ["Iluminação Interna", "Iluminação Externa"], eletrica: ["Infraestrutura", "Disjuntores e Proteção", "Cabos e Condutores", "Eletrodutos e Caixas"] };
@@ -44,6 +45,14 @@ async function deleteRequest(id) { const { error } = await supabase.from("reques
 // ---------- Dados: público ----------
 async function loadPublicCatalog() { const { data, error } = await supabase.from("catalog_public").select("*").order("category").order("sort"); if (error) { console.error(error); return []; } return data || []; }
 async function submitRequest(payload) { const { error } = await supabase.from("requests").insert(payload); return error; }
+async function uploadImage(id, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${id}.${ext}`;
+  const { error } = await supabase.storage.from("catalog").upload(path, file, { upsert: true, cacheControl: "3600" });
+  if (error) { console.error("upload", error); alert("Erro ao enviar a foto. Tente novamente."); return null; }
+  const { data } = supabase.storage.from("catalog").getPublicUrl(path);
+  return data?.publicUrl ? `${data.publicUrl}?t=${Date.now()}` : null;
+}
 
 // ---------- Ícones dos produtos (SVG próprios) ----------
 function ProductIcon({ icon, size = 22 }) {
@@ -70,6 +79,15 @@ function ProductIcon({ icon, size = 22 }) {
     tube: <><rect x="3" y="9" width="18" height="6" rx="3" /><path d="M8 9v6" /><path d="M13 9v6" /></>,
   };
   return <svg {...common}>{P[k]}</svg>;
+}
+function ProdImg({ item, size = 40 }) {
+  const srcs = [];
+  if (item?.image) srcs.push(item.image);
+  if (item?.id) srcs.push(`${STORAGE_BASE}/${item.id}.png`);
+  const [i, setI] = useState(0);
+  useEffect(() => { setI(0); }, [item?.id, item?.image]);
+  if (i >= srcs.length) return <ProductIcon icon={item?.icon} size={Math.round(size * 0.78)} />;
+  return <img src={srcs[i]} alt="" onError={() => setI((n) => n + 1)} style={{ width: size, height: size, objectFit: "contain" }} />;
 }
 
 // ---------- PDF (orçamento) ----------
@@ -562,14 +580,18 @@ function EditPayment({ s, upd, cName, onClose }) {
 }
 
 // ---------- PRODUTOS (catálogo + mão de obra) ----------
-function CatalogRow({ item, onSave, onEdit, onDelete }) {
-  const [cost, setCost] = useState(item.cost ?? 0); const [price, setPrice] = useState(item.price ?? 0);
+function CatalogRow({ item, onSave, onEdit, onDelete, onUpload }) {
+  const [cost, setCost] = useState(item.cost ?? 0); const [price, setPrice] = useState(item.price ?? 0); const [up, setUp] = useState(false);
   useEffect(() => { setCost(item.cost ?? 0); setPrice(item.price ?? 0); }, [item.id, item.cost, item.price]);
   const margin = (+price || 0) - (+cost || 0);
   const commit = () => onSave(item.id, { cost: +cost || 0, price: +price || 0 });
+  const pick = async (e) => { const f = e.target.files[0]; if (!f) return; setUp(true); await onUpload(item.id, f); setUp(false); };
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-neutral-50 last:border-0">
-      <div className="text-amber-500 shrink-0"><ProductIcon icon={item.icon} /></div>
+      <label className="shrink-0 w-11 h-11 rounded-lg bg-neutral-50 border border-neutral-200 flex items-center justify-center text-amber-500 overflow-hidden cursor-pointer hover:border-amber-400" title="Enviar foto">
+        {up ? <span className="text-[9px] text-neutral-400">…</span> : <ProdImg item={item} size={40} />}
+        <input type="file" accept="image/*" className="hidden" onChange={pick} />
+      </label>
       <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-[10px] text-neutral-400">{item.unit}</p></div>
       <div className="flex items-center gap-2 shrink-0">
         <div className="w-20"><span className="text-[9px] text-neutral-400 block">Custo</span><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} onBlur={commit} className="w-full px-2 py-1 rounded bg-neutral-50 border border-neutral-200 text-xs outline-none focus:border-amber-400" /></div>
@@ -590,6 +612,7 @@ function Produtos({ catalog, setCatalog, db, upd }) {
 
   const save = async (id, patch) => { setCatalog((cs) => cs.map((c) => c.id === id ? { ...c, ...patch } : c)); await saveCatalogItem(id, patch); };
   const del = async (id) => { if (!window.confirm("Excluir este item do catálogo?")) return; setCatalog((cs) => cs.filter((c) => c.id !== id)); await deleteCatalogItem(id); };
+  const upFoto = async (id, file) => { const url = await uploadImage(id, file); if (url) await save(id, { image: url }); };
   const openNew = () => { setEditId(null); setF({ ...blank, category: tab, subcategory: SUBCATS[tab][0] }); setModal(true); };
   const openEdit = (it) => { setEditId(it.id); setF({ name: it.name, category: it.category, subcategory: it.subcategory, unit: it.unit, icon: it.icon, cost: it.cost || 0, price: it.price || 0 }); setModal(true); };
   const saveItem = async () => {
@@ -620,7 +643,7 @@ function Produtos({ catalog, setCatalog, db, upd }) {
         return (
           <div key={sub} className="mb-4">
             <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">{sub}</p>
-            <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">{rows.map((it) => <CatalogRow key={it.id} item={it} onSave={save} onEdit={openEdit} onDelete={del} />)}</div>
+            <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">{rows.map((it) => <CatalogRow key={it.id} item={it} onSave={save} onEdit={openEdit} onDelete={del} onUpload={upFoto} />)}</div>
           </div>
         );
       }) : (
@@ -710,7 +733,7 @@ function RequestDetail({ r, catalog, db, upd, setRequests, onClose }) {
       <div className="space-y-1.5 mb-3">
         {(r.items || []).map((it) => (
           <div key={it.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-neutral-50">
-            <div className="text-amber-500 shrink-0"><ProductIcon icon={catalog.find((c) => c.id === it.id)?.icon} size={20} /></div>
+            <div className="text-amber-500 shrink-0"><ProdImg item={catalog.find((c) => c.id === it.id)} size={26} /></div>
             <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{it.name}</p><p className="text-[10px] text-neutral-400">qtd {it.qty} {it.unit || ""}</p></div>
             <div className="w-24 shrink-0"><span className="text-[9px] text-neutral-400 block">Valor unit.</span><input type="number" value={values[it.id] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [it.id]: e.target.value }))} className="w-full px-2 py-1 rounded bg-white border border-neutral-200 text-xs outline-none focus:border-amber-400" /></div>
             <div className="w-20 text-right shrink-0 text-sm font-semibold text-neutral-700">{brl((+values[it.id] || 0) * it.qty)}</div>
@@ -813,7 +836,7 @@ function PublicCatalog() {
           <div className="grid grid-cols-2 gap-2">
             {groups[g].map((i) => { const q = cart[i.id] || 0; return (
               <div key={i.id} className={`bg-white rounded-xl border p-3 ${q ? "border-amber-400" : "border-neutral-100"}`}>
-                <div className="text-amber-500 mb-2"><ProductIcon icon={i.icon} size={26} /></div>
+                <div className="text-amber-500 mb-2 h-11 flex items-center"><ProdImg item={i} size={44} /></div>
                 <p className="text-xs font-medium leading-tight mb-0.5 min-h-[2.2em]">{i.name}</p>
                 <p className="text-[10px] text-neutral-400 mb-2">{i.unit}</p>
                 {q === 0 ? <button onClick={() => add(i.id)} className="w-full py-1.5 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-medium hover:bg-amber-100">+ Adicionar</button>
