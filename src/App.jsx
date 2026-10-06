@@ -73,15 +73,15 @@ function ProductIcon({ icon, size = 22 }) {
 }
 
 // ---------- PDF (orçamento) ----------
+function loadImg(src) { return new Promise((res) => { const img = new Image(); img.onload = () => { try { const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext("2d").drawImage(img, 0, 0); res({ dataUrl: c.toDataURL("image/png"), w: img.naturalWidth, h: img.naturalHeight }); } catch { res(null); } }; img.onerror = () => res(null); img.src = src; }); }
 async function baixarPDF(s, client) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210, M = 15; let y = 20;
   doc.setFillColor(251, 191, 36); doc.rect(0, 0, W, 3, "F");
-  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(245, 158, 11);
-  doc.text("Hermes", M, y);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(115, 115, 115);
-  doc.text("Instalações Elétricas e Iluminação Inteligente", M, y + 5);
+  const logo = await loadImg("/hs-logo-light.png");
+  if (logo) { const h = 13, w = h * (logo.w / logo.h); doc.addImage(logo.dataUrl, "PNG", M, y - 8, w, h); }
+  else { doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(23, 23, 23); doc.text("HS Elétrica & Iluminação", M, y); }
   doc.setFillColor(251, 191, 36); doc.roundedRect(W - M - 34, y - 6, 34, 9, 2, 2, "F");
   doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(23, 23, 23);
   doc.text("ORÇAMENTO", W - M - 30, y);
@@ -121,7 +121,7 @@ async function baixarPDF(s, client) {
   doc.text(`Data prevista: ${fmtD(s.scheduledDate)}`, M + 4, y + 16);
   doc.text(`Duração: ${s.durType === "horas" ? s.durVal + "h" : s.durVal + " dia(s)"}`, M + 4, y + 21); y += 30;
   doc.setFontSize(7.5); doc.setTextColor(160, 160, 160);
-  doc.text("Hermes — Instalações Elétricas e Iluminação Inteligente · Documento sem valor fiscal.", M, y);
+  doc.text("HS Elétrica & Iluminação · Documento sem valor fiscal.", M, y);
   doc.save(`Orcamento-${(client?.name || "cliente").replace(/[^\w]/g, "_")}.pdf`);
 }
 function Quote({ s, client, onClose }) {
@@ -135,8 +135,8 @@ function Quote({ s, client, onClose }) {
           <div className="flex items-center gap-2"><button onClick={gerar} className={btn + " flex items-center gap-1"}><FileText size={15} />Baixar PDF</button><button onClick={onClose} className="text-neutral-400 hover:text-neutral-700"><X size={20} /></button></div>
         </div>
         <div className="p-6">
-          <div className="flex justify-between items-start border-b-4 border-amber-400 pb-4 mb-5">
-            <div className="flex items-center gap-2"><Lightbulb className="text-amber-500 shrink-0" size={20} /><span className="font-bold text-amber-500 leading-tight">Hermes — Instalações Elétricas e Iluminação Inteligente</span></div>
+          <div className="flex justify-between items-center border-b-4 border-amber-400 pb-4 mb-5">
+            <img src="/hs-logo-light.png" alt="HS Elétrica & Iluminação" className="h-11 w-auto" />
             <span className="bg-amber-400 text-neutral-900 font-bold text-xs px-3 py-1.5 rounded-lg shrink-0 ml-2">ORÇAMENTO</span>
           </div>
           <h1 className="text-xl font-bold">Proposta de Serviço</h1>
@@ -157,7 +157,7 @@ function Quote({ s, client, onClose }) {
           <div className="bg-neutral-50 border border-neutral-100 rounded-lg p-4 text-sm grid grid-cols-2 gap-2">
             <div>Forma de pagamento: <b>{s.paymentMethod}</b></div><div>Data prevista: <b>{fmtD(s.scheduledDate)}</b></div><div>Duração: <b>{s.durType === "horas" ? s.durVal + "h" : s.durVal + " dia(s)"}</b></div>
           </div>
-          <p className="text-[10px] text-neutral-400 mt-6 pt-3 border-t border-neutral-100">Hermes — Instalações Elétricas e Iluminação Inteligente · Documento sem valor fiscal.</p>
+          <p className="text-[10px] text-neutral-400 mt-6 pt-3 border-t border-neutral-100">HS Elétrica & Iluminação · Documento sem valor fiscal.</p>
         </div>
       </div>
     </div>
@@ -171,8 +171,7 @@ function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-950 p-4">
       <div className="w-full max-w-sm bg-neutral-900 rounded-2xl border border-neutral-800 p-8">
-        <div className="flex items-center gap-2 mb-1"><div className="p-2 rounded-xl bg-amber-400/10"><Lightbulb className="text-amber-400" size={22} /></div><span className="text-amber-400 font-bold tracking-tight text-lg">Hermes</span></div>
-        <p className="text-neutral-500 text-sm mb-6">Instalações Elétricas e Iluminação Inteligente</p>
+        <img src="/hs-logo-dark.png" alt="HS Elétrica & Iluminação" className="w-52 mx-auto mb-6" />
         <input value={e} onChange={(ev) => setE(ev.target.value)} placeholder="E-mail" className="w-full mb-3 px-4 py-2.5 rounded-lg bg-neutral-800 text-white text-sm border border-neutral-700 outline-none focus:border-amber-400" />
         <input value={p} onChange={(ev) => setP(ev.target.value)} type="password" placeholder="Senha" onKeyDown={(k) => k.key === "Enter" && go()} className="w-full mb-2 px-4 py-2.5 rounded-lg bg-neutral-800 text-white text-sm border border-neutral-700 outline-none focus:border-amber-400" />
         {err && <p className="text-red-400 text-xs mb-2">{err}</p>}
@@ -241,7 +240,7 @@ function AdminApp() {
   return (
     <div className="flex min-h-screen bg-neutral-50 text-neutral-900" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <aside className="w-56 bg-neutral-950 text-neutral-300 flex flex-col py-5 px-3 shrink-0">
-        <div className="flex items-center gap-2 px-2 mb-7"><div className="p-1.5 rounded-lg bg-amber-400/10"><Lightbulb className="text-amber-400" size={18} /></div><span className="text-amber-400 font-bold text-sm tracking-tight">Hermes</span></div>
+        <div className="px-2 mb-7"><img src="/hs-logo-dark.png" alt="HS Elétrica & Iluminação" className="w-full" /></div>
         {nav.map(([k, l, I]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm mb-1 transition ${tab === k ? "bg-amber-400 text-neutral-900 font-semibold" : "hover:bg-neutral-800"}`}><I size={17} /><span className="flex-1 text-left">{l}</span>{k === "sol" && newReqs > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">{newReqs}</span>}</button>
         ))}
@@ -735,7 +734,7 @@ function RequestDetail({ r, catalog, db, upd, setRequests, onClose }) {
 function PubShell({ children }) {
   return (
     <div className="min-h-screen bg-neutral-50" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <div className="bg-neutral-950 text-white px-5 py-4 flex items-center gap-2"><div className="p-1.5 rounded-lg bg-amber-400/10"><Lightbulb className="text-amber-400" size={18} /></div><div><p className="text-amber-400 font-bold text-sm leading-none">Hermes</p><p className="text-[10px] text-neutral-400">Instalações Elétricas e Iluminação Inteligente</p></div></div>
+      <div className="bg-neutral-950 px-5 py-4"><img src="/hs-logo-dark.png" alt="HS Elétrica & Iluminação" className="h-10 w-auto" /></div>
       <div className="max-w-xl mx-auto p-4 pb-28">{children}</div>
     </div>
   );
