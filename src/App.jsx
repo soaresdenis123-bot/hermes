@@ -583,10 +583,10 @@ function EditPayment({ s, upd, cName, onClose }) {
 
 // ---------- PRODUTOS (catálogo + mão de obra) ----------
 function CatalogRow({ item, onSave, onEdit, onDelete, onUpload }) {
-  const [cost, setCost] = useState(item.cost ?? 0); const [price, setPrice] = useState(item.price ?? 0); const [up, setUp] = useState(false);
-  useEffect(() => { setCost(item.cost ?? 0); setPrice(item.price ?? 0); }, [item.id, item.cost, item.price]);
+  const [cost, setCost] = useState(item.cost ?? 0); const [price, setPrice] = useState(item.price ?? 0); const [stock, setStock] = useState(item.stock ?? 0); const [up, setUp] = useState(false);
+  useEffect(() => { setCost(item.cost ?? 0); setPrice(item.price ?? 0); setStock(item.stock ?? 0); }, [item.id, item.cost, item.price, item.stock]);
   const margin = (+price || 0) - (+cost || 0);
-  const commit = () => onSave(item.id, { cost: +cost || 0, price: +price || 0 });
+  const commit = () => onSave(item.id, { cost: +cost || 0, price: +price || 0, stock: +stock || 0 });
   const pick = async (e) => { const f = e.target.files[0]; if (!f) return; setUp(true); await onUpload(item.id, f); setUp(false); };
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-neutral-50 last:border-0">
@@ -596,6 +596,7 @@ function CatalogRow({ item, onSave, onEdit, onDelete, onUpload }) {
       </label>
       <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-[10px] text-neutral-400">{item.unit}</p></div>
       <div className="flex items-center gap-2 shrink-0">
+        <div className="w-16"><span className="text-[9px] text-neutral-400 block">Estoque</span><input type="number" value={stock} onChange={(e) => setStock(e.target.value)} onBlur={commit} className={`w-full px-2 py-1 rounded border text-xs outline-none focus:border-amber-400 ${(+stock || 0) <= 0 ? "bg-red-50 border-red-200 text-red-600 font-semibold" : "bg-neutral-50 border-neutral-200"}`} /></div>
         <div className="w-20"><span className="text-[9px] text-neutral-400 block">Custo</span><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} onBlur={commit} className="w-full px-2 py-1 rounded bg-neutral-50 border border-neutral-200 text-xs outline-none focus:border-amber-400" /></div>
         <div className="w-20"><span className="text-[9px] text-neutral-400 block">Venda</span><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} onBlur={commit} className="w-full px-2 py-1 rounded bg-neutral-50 border border-neutral-200 text-xs outline-none focus:border-amber-400" /></div>
         <div className="w-16 text-right"><span className="text-[9px] text-neutral-400 block">Margem</span><span className={`text-xs font-semibold ${margin >= 0 ? "text-emerald-500" : "text-red-500"}`}>{brl(margin)}</span></div>
@@ -608,7 +609,7 @@ function CatalogRow({ item, onSave, onEdit, onDelete, onUpload }) {
 function Produtos({ catalog, setCatalog, db, upd }) {
   const [tab, setTab] = useState("iluminacao");
   const [modal, setModal] = useState(false); const [editId, setEditId] = useState(null);
-  const blank = { name: "", category: "iluminacao", subcategory: "Iluminação Interna", unit: "un", icon: "plafon", cost: 0, price: 0 };
+  const blank = { name: "", category: "iluminacao", subcategory: "Iluminação Interna", unit: "un", icon: "plafon", cost: 0, price: 0, stock: 0 };
   const [f, setF] = useState(blank);
   const [lModal, setLModal] = useState(false); const [lEdit, setLEdit] = useState(null); const [lf, setLf] = useState({ name: "", description: "", value: "" });
 
@@ -616,11 +617,11 @@ function Produtos({ catalog, setCatalog, db, upd }) {
   const del = async (id) => { if (!window.confirm("Excluir este item do catálogo?")) return; setCatalog((cs) => cs.filter((c) => c.id !== id)); await deleteCatalogItem(id); };
   const upFoto = async (id, file) => { const url = await uploadImage(id, file); if (url) await save(id, { image: url }); };
   const openNew = () => { setEditId(null); setF({ ...blank, category: tab, subcategory: SUBCATS[tab][0] }); setModal(true); };
-  const openEdit = (it) => { setEditId(it.id); setF({ name: it.name, category: it.category, subcategory: it.subcategory, unit: it.unit, icon: it.icon, cost: it.cost || 0, price: it.price || 0 }); setModal(true); };
+  const openEdit = (it) => { setEditId(it.id); setF({ name: it.name, category: it.category, subcategory: it.subcategory, unit: it.unit, icon: it.icon, cost: it.cost || 0, price: it.price || 0, stock: it.stock || 0 }); setModal(true); };
   const saveItem = async () => {
     if (!f.name) return;
-    if (editId) { setCatalog((cs) => cs.map((c) => c.id === editId ? { ...c, ...f } : c)); await saveCatalogItem(editId, f); }
-    else { const maxSort = Math.max(0, ...catalog.filter((c) => c.category === f.category).map((c) => c.sort || 0)); const item = { id: "c" + uid(), ...f, cost: +f.cost || 0, price: +f.price || 0, sort: maxSort + 1, active: true }; setCatalog((cs) => [...cs, item]); await insertCatalogItem(item); }
+    if (editId) { const patch = { ...f, cost: +f.cost || 0, price: +f.price || 0, stock: +f.stock || 0 }; setCatalog((cs) => cs.map((c) => c.id === editId ? { ...c, ...patch } : c)); await saveCatalogItem(editId, patch); }
+    else { const maxSort = Math.max(0, ...catalog.filter((c) => c.category === f.category).map((c) => c.sort || 0)); const item = { id: "c" + uid(), ...f, cost: +f.cost || 0, price: +f.price || 0, stock: +f.stock || 0, sort: maxSort + 1, active: true }; setCatalog((cs) => [...cs, item]); await insertCatalogItem(item); }
     setModal(false); setEditId(null);
   };
 
@@ -664,6 +665,7 @@ function Produtos({ catalog, setCatalog, db, upd }) {
           <Field label="Ícone"><select className={inp} value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })}>{ICON_KEYS.map((i) => <option key={i}>{i}</option>)}</select></Field>
           <Field label="Custo (R$)"><input className={inp} type="number" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} /></Field>
           <Field label="Venda (R$)"><input className={inp} type="number" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} /></Field>
+          <Field label="Estoque"><input className={inp} type="number" value={f.stock} onChange={(e) => setF({ ...f, stock: e.target.value })} /></Field>
         </div>
         <div className="flex items-center gap-2 mb-3 text-amber-500"><ProductIcon icon={f.icon} /><span className="text-xs text-neutral-400">prévia do ícone</span></div>
         <button onClick={saveItem} className={btn + " w-full"}>{editId ? "Salvar alterações" : "Salvar item"}</button>
